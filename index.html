@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flower Species Recognition</title>
+    <style>
+        :root {
+            --primary: #2d6a4f;
+            --primary-hover: #1b4332;
+            --bg: #f8f9fa;
+            --card: #ffffff;
+            --border: #e9ecef;
+            --text: #212529;
+            --accent: #d8f3dc;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 2rem 1rem;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        h1 {
+            color: var(--primary);
+            margin-top: 0;
+            font-size: 1.75rem;
+        }
+
+        p.subtitle {
+            color: #6c757d;
+            font-size: 0.95rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .drop-zone {
+            border: 2px dashed #b7e4c7;
+            background: #f8fafc;
+            border-radius: 8px;
+            padding: 2rem 1rem;
+            text-align: center;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .drop-zone:hover {
+            background: var(--accent);
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .preview-container {
+            text-align: center;
+            margin-top: 1rem;
+        }
+
+        .preview-img {
+            max-width: 100%;
+            max-height: 260px;
+            border-radius: 8px;
+            display: none;
+            object-fit: cover;
+            border: 1px solid var(--border);
+        }
+
+        button {
+            width: 100%;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.8rem;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 1rem;
+            margin-top: 1.25rem;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        button:disabled {
+            background-color: #adb5bd;
+            cursor: not-allowed;
+        }
+
+        .status {
+            margin-top: 1rem;
+            text-align: center;
+            font-weight: 500;
+            color: #495057;
+        }
+
+        .result-card {
+            margin-top: 1.5rem;
+            padding: 1.25rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid var(--primary);
+            display: none;
+        }
+
+        .result-card h2 {
+            margin: 0.25rem 0;
+            color: var(--primary);
+        }
+
+        .confidence-badge {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: #2b9348;
+            margin-bottom: 1rem;
+        }
+
+        .candidate-list {
+            list-style: none;
+            padding: 0;
+            margin: 0.75rem 0 0 0;
+        }
+
+        .candidate-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.4rem 0;
+            border-bottom: 1px solid #e9ecef;
+            font-size: 0.9rem;
+        }
+
+        .candidate-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Flower Classifier</h1>
+    <p class="subtitle">Upload or drop a flower photo to run CNN model classification.</p>
+
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('imageInput').click()">
+        <p style="margin: 0; font-weight: 600;">Click or Drag & Drop Photo Here</p>
+        <p style="margin: 0.25rem 0 0 0; font-size: 0.8rem; color: #6c757d;">Supports JPG, PNG, WEBP</p>
+        <input type="file" id="imageInput" accept="image/*">
+    </div>
+
+    <div class="preview-container">
+        <img id="imagePreview" class="preview-img" alt="Flower Preview">
+    </div>
+
+    <button id="processBtn" onclick="classifyFlower()" disabled>Identify Flower</button>
+
+    <div id="statusText" class="status"></div>
+
+    <div id="resultContainer" class="result-card">
+        <span style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d;">Primary Match</span>
+        <h2 id="predictedSpecies"></h2>
+        <div id="matchConfidence" class="confidence-badge"></div>
+
+        <span style="font-size: 0.85rem; font-weight: 600; color: #495057;">Top Candidate Probabilities:</span>
+        <ul id="candidateList" class="candidate-list"></ul>
+    </div>
+</div>
+
+<script>
+    const imageInput = document.getElementById('imageInput');
+    const imagePreview = document.getElementById('imagePreview');
+    const processBtn = document.getElementById('processBtn');
+    const statusText = document.getElementById('statusText');
+    const resultContainer = document.getElementById('resultContainer');
+    const predictedSpecies = document.getElementById('predictedSpecies');
+    const matchConfidence = document.getElementById('matchConfidence');
+    const candidateList = document.getElementById('candidateList');
+    const dropZone = document.getElementById('dropZone');
+
+    // Drag & Drop handlers
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            dropZone.style.background = '#d8f3dc';
+        }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            dropZone.style.background = '#f8fafc';
+        }, false);
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        if (files.length > 0) {
+            imageInput.files = files;
+            handleImageSelection(files[0]);
+        }
+    });
+
+    imageInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleImageSelection(e.target.files[0]);
+        }
+    });
+
+    function handleImageSelection(file) {
+        imagePreview.src = URL.createObjectURL(file);
+        imagePreview.style.display = 'inline-block';
+        processBtn.disabled = false;
+        resultContainer.style.display = 'none';
+        statusText.innerText = '';
+    }
+
+    async function classifyFlower() {
+        const file = imageInput.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('flower_image', file);
+
+        processBtn.disabled = true;
+        statusText.innerText = 'Running CNN model inference...';
+
+        try {
+            const response = await fetch('api.php', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                statusText.innerText = '';
+                resultContainer.style.display = 'block';
+
+                predictedSpecies.innerText = data.primary_prediction;
+                matchConfidence.innerText = `Confidence: ${data.confidence}%`;
+
+                candidateList.innerHTML = '';
+                data.top_candidates.forEach(item => {
+                    const li = document.createElement('li');
+                    li.className = 'candidate-item';
+                    li.innerHTML = `<span>${item.species}</span> <strong>${item.confidence}%</strong>`;
+                    candidateList.appendChild(li);
+                });
+            } else {
+                statusText.innerText = 'Error: ' + (data.message || 'Classification failed.');
+            }
+        } catch (err) {
+            console.error(err);
+            statusText.innerText = 'Server communication error.';
+        } finally {
+            processBtn.disabled = false;
+        }
+    }
+</script>
+
+</body>
+</html>
